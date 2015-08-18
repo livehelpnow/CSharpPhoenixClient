@@ -54,12 +54,12 @@ namespace PhoenixChannels
             _heartbeatTimer.Elapsed += (o, e) => SendHeartbeat();
         }
 
-        public void Disconnect(Action callback, CloseStatusCode code = CloseStatusCode.NoStatusCode, string reason = null)
+        public void Disconnect(Action callback, CloseStatusCode code = CloseStatusCode.NoStatus, string reason = null)
         {
             if (_conn != null)
             {
                 // _conn.OnClose(); //TODO how to clear event handler?
-                if (code != CloseStatusCode.NoStatusCode)
+                if (code != CloseStatusCode.NoStatus)
                 {
                     _conn.Close(code, reason);
                 }
