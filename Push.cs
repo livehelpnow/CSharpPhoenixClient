@@ -52,7 +52,7 @@ namespace PhoenixChannels
             _receivedResp = null;
             _sent = false;
 
-            _channel.On(_refEvent, (payload) =>
+            _channel.On(_refEvent, (payload, reference) =>
             {
                 _receivedResp = payload;
                 MatchReceive(payload);

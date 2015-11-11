@@ -34,7 +34,7 @@ namespace PhoenixChannels
 
         public Socket Socket { get; set; }
 
-        private IDictionary<string, List<Action<JObject>>> _bindings;
+        private IDictionary<string, List<Action<JObject, string>>> _bindings;
         private bool _alreadyJoinedOnce;
         private Push _joinPush;
         private IList<Push> _pushBuffer;
@@ -46,7 +46,7 @@ namespace PhoenixChannels
             Topic = topic;
 
             Socket = socket;
-            _bindings = new Dictionary<string, List<Action<JObject>>>();
+            _bindings = new Dictionary<string, List<Action<JObject, string>>>();
             _alreadyJoinedOnce = false;
 
             _joinPush = new Push(this, ChannelEvents.Join, params_);
@@ -57,22 +57,22 @@ namespace PhoenixChannels
                 _state = ChannelState.Joined;
             });
 
-            OnClose((o) =>
+            OnClose((o, reference) =>
             {
                 _state = ChannelState.Closed;
                 Socket.Remove(this);
             });
 
-            OnError((reason) => //reason is not used
+            OnError((reason, reference) => //reason is not used
             {
                 _state = ChannelState.Errored;
                 _rejoinTimer.Start();
 
             });
 
-            On(ChannelEvents.Reply, (payload) =>
+            On(ChannelEvents.Reply, (payload, reference) =>
             {
-                Trigger(ReplyEventName((string)payload["ref"]), payload);
+                Trigger(ReplyEventName(reference), payload, reference);
             });
 
 
@@ -111,20 +111,20 @@ namespace PhoenixChannels
             return _joinPush;
         }
 
-        public void OnClose(Action<object> callback)
+        public void OnClose(Action<object, string> callback)
         {
             On(ChannelEvents.Close, callback);
         }
 
-        public void OnError(Action<object> callback)
+        public void OnError(Action<object, string> callback)
         {
             On(ChannelEvents.Error, callback);
         }
 
-        public void On(string evt, Action<JObject> callback)
+        public void On(string evt, Action<JObject, string> callback)
         {
             if (!_bindings.ContainsKey(evt))
-                _bindings[evt] = new List<Action<JObject>>();
+                _bindings[evt] = new List<Action<JObject, string>>();
             _bindings[evt].Add(callback);
         }
 
@@ -188,13 +188,13 @@ namespace PhoenixChannels
             _pushBuffer.Clear();
         }
 
-        public void Trigger(string event_, JObject msg = null)
+        internal void Trigger(string event_, JObject msg = null, string reference = null)
         {
             if (_bindings.ContainsKey(event_))
             {
                 foreach (var callback in _bindings[event_])
                 {
-                    callback(msg);
+                    callback(msg, reference);
                 }
             }
         }

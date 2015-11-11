@@ -232,7 +232,7 @@ namespace PhoenixChannels
 
             foreach(var chan in _channels.Where((c) => c.IsMember(env.Topic)).ToList())
             {
-                chan.Trigger(env.Event, env.Payload);
+                chan.Trigger(env.Event, env.Payload, env.Ref);
             }
 
             foreach (var callback in _messageCallbacks) callback(env.Topic, env.Event, env.Payload);
