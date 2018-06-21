@@ -180,7 +180,13 @@ namespace PhoenixChannels
 
         public void Push(Envelope envelope)
         {
-            Action callback = () => _conn.Send(JObject.FromObject(envelope).ToString(Formatting.None));
+            var push = new JArray(
+                envelope.JoinRef,
+                envelope.Ref,
+                envelope.Topic,
+                envelope.Event,
+                envelope.Payload);
+            Action callback = () => _conn.Send(push.ToString());
 
             if (IsConnected())
             {
@@ -207,7 +213,7 @@ namespace PhoenixChannels
                 Topic = "phoenix",
                 Event = "heartbeat",
                 Payload = new JObject(),
-                Ref = MakeRef(),
+                Ref = MakeRef()
             };
 
             Push(env);
@@ -215,7 +221,7 @@ namespace PhoenixChannels
 
         private void FlushSendBuffer()
         {
-            if (this.IsConnected() && _sendBuffer.Count > 0)
+            if (IsConnected() && _sendBuffer.Count > 0)
             {
                 foreach (var c in _sendBuffer)
                 {
@@ -228,7 +234,16 @@ namespace PhoenixChannels
 
         private void OnConnMessage(object sender, MessageEventArgs e)
         {
-            var env = JsonConvert.DeserializeObject<Envelope>(e.Data);
+            var push = JArray.Parse(e.Data);
+            var env = new Envelope
+            {
+                JoinRef = push.Value<string>(0),
+                Ref = push.Value<string>(1),
+                Topic = push.Value<string>(2),
+                Event = push.Value<string>(3),
+                Payload = push.Value<JObject>(4)
+                
+            };
 
             foreach(var chan in _channels.Where((c) => c.IsMember(env.Topic)).ToList())
             {

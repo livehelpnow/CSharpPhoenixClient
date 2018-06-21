@@ -8,24 +8,6 @@ using Newtonsoft.Json.Linq;
 
 namespace PhoenixChannels
 {
-
-    public enum ChannelState
-    {
-        Closed,
-        Errored,
-        Joined,
-        Joining,
-    }
-
-    public static class ChannelEvents
-    {
-        public static string Close = "phx_close";
-        public static string Error = "phx_error";
-        public static string Join = "phx_join";
-        public static string Reply = "phx_reply";
-        public static string Leave = "phx_leave";
-    }
-
     public class Channel
     {
         private ChannelState _state;
@@ -33,6 +15,9 @@ namespace PhoenixChannels
         public string Topic { get; set; }
 
         public Socket Socket { get; set; }
+        
+        public string JoinRef { get; private set; }
+        
 
         private IDictionary<string, List<Action<JObject, string>>> _bindings;
         private bool _alreadyJoinedOnce;
@@ -48,10 +33,11 @@ namespace PhoenixChannels
             Socket = socket;
             _bindings = new Dictionary<string, List<Action<JObject, string>>>();
             _alreadyJoinedOnce = false;
-
-            _joinPush = new Push(this, ChannelEvents.Join, params_);
             _pushBuffer = new List<Push>();
-
+            
+            JoinRef = Socket.MakeRef();
+            
+            _joinPush = new Push(this, ChannelEvents.Join, params_);
             _joinPush.Receive("ok", (x) =>
             {
                 _state = ChannelState.Joined;
