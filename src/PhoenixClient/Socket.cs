@@ -1,13 +1,34 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using WebSocketSharp;
+using System.Net.Sockets;
+using System.Net.WebSockets;
 using System.Timers;
-using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using PureWebSockets;
 
 namespace PhoenixChannels
 {
+    public struct CloseEventArgs
+    {
+        public WebSocketCloseStatus Reason { get; }
+
+        public CloseEventArgs(WebSocketCloseStatus reason)
+        {
+            Reason = reason;
+        }
+    }
+
+    public struct ErrorEventArgs
+    {
+        public Exception Reason { get; }
+
+        public ErrorEventArgs(Exception reason)
+        {
+            Reason = reason;
+        }
+    }
+
     public class Socket
     {
         private IList<Action> _openCallbacks;
@@ -21,7 +42,7 @@ namespace PhoenixChannels
         private int _heartbeatIntervalMs;
         private string _endPoint;
 
-        private WebSocket _conn;
+        private PureWebSocket _conn;
         private Timer _reconnectTimer;
         private Timer _heartbeatTimer;
 
@@ -40,55 +61,86 @@ namespace PhoenixChannels
 
             _heartbeatIntervalMs = heartbeatIntervalMs;
             ReconnectAfterMs = reconnectAfterMs;
-            _endPoint = endPoint;
+
+            var uri = new Uri(endPoint);
+            if (uri.Scheme != "ws" && uri.Scheme != "wss")
+            {
+                throw new ArgumentException($"Uri scheme is invalid, should be wss or ws instead got '{uri.Scheme}'",
+                    nameof(endPoint));
+            }
+
+            if (!uri.Query.Contains("vsn=2.0.0"))
+            {
+                
+                var builder = new UriBuilder(
+                    uri.Scheme,
+                    uri.Host,
+                    uri.Port,
+                    uri.AbsolutePath.EndsWith("/websocket") ? uri.AbsolutePath : uri.AbsolutePath + "/websocket",
+                    uri.Query.Length == 0 ? "?vsn=2.0.0" : "&vsn=2.0.0"
+                );
+                
+                uri = builder.Uri;
+            }
+
+            _endPoint = uri.ToString();
 
 
             _reconnectTimer = new Timer(ReconnectAfterMs);
             _reconnectTimer.AutoReset = true;
             //_reconnectTimer.Enabled = false;
             _reconnectTimer.Elapsed += (o, e) => Connect();
-            
+
             _heartbeatTimer = new Timer(_heartbeatIntervalMs);
             _heartbeatTimer.AutoReset = true;
             //_heartbeatTimer.Enabled = true;
             _heartbeatTimer.Elapsed += (o, e) => SendHeartbeat();
         }
 
-        public void Disconnect(Action callback, CloseStatusCode code = CloseStatusCode.NoStatus, string reason = null)
+        public void Disconnect(Action callback)
         {
             if (_conn != null)
             {
                 // _conn.OnClose(); //TODO how to clear event handler?
-                if (code != CloseStatusCode.NoStatus)
+                if (_conn.State == WebSocketState.Open)
                 {
-                    _conn.Close(code, reason);
+                    _conn.Disconnect();
                 }
 
+                _conn.Dispose();
                 _conn = null;
             }
 
-            if (callback != null) callback();
+            callback?.Invoke();
         }
-
-        //  disconnect(callback, code, reason){
-        //    if(this.conn){
-        //      this.conn.onclose = function(){} // noop
-        //      if(code){ this.conn.close(code, reason || "") } else { this.conn.close() }
-        //      this.conn = null
-        //    }
-        //    callback && callback()
-        //  }
 
         public void Connect()
         {
+            if (IsConnected())
+            {
+                return;
+            }
+
             Disconnect(() =>
             {
-                _conn = new WebSocket(_endPoint);
-                _conn.OnOpen += OnConnOpen;
+                var opts = new PureWebSocketOptions
+                {
+                    MyReconnectStrategy = new ReconnectStrategy(1000, 30000)
+                };
+                _conn = new PureWebSocket(_endPoint, opts);
+                _conn.OnOpened += OnConnOpen;
                 _conn.OnError += OnConnError;
                 _conn.OnMessage += OnConnMessage;
-                _conn.OnClose += OnConnClose;
-                _conn.Connect();
+                _conn.OnClosed += OnConnClose;
+                try
+                {
+                    _conn.Connect();
+                    _reconnectTimer.Stop();
+                }
+                catch (Exception ex)
+                {
+                    _reconnectTimer.Start();
+                }
             });
         }
 
@@ -99,13 +151,13 @@ namespace PhoenixChannels
             return this;
         }
 
-        public Socket OnClose(Action<object> callback)
+        public Socket OnClose(Action<CloseEventArgs> callback)
         {
             _closeCallbacks.Add(callback);
             return this;
         }
 
-        public Socket OnError(Action<object> callback)
+        public Socket OnError(Action<ErrorEventArgs> callback)
         {
             _errorCallbacks.Add(callback);
             return this;
@@ -118,7 +170,7 @@ namespace PhoenixChannels
         }
 
 
-        private void OnConnOpen(object sender, EventArgs e)
+        private void OnConnOpen()
         {
             FlushSendBuffer();
             _reconnectTimer.Stop();
@@ -132,20 +184,22 @@ namespace PhoenixChannels
         }
 
 
-        private void OnConnClose(object sender, CloseEventArgs e)
+        private void OnConnClose(WebSocketCloseStatus reason)
         {
             TriggerChanError();
             _reconnectTimer.Stop();
             _heartbeatTimer.Stop();
 
-            //_reconnectTimer.Start();
-            foreach (var callback in _closeCallbacks) callback(e);
+            _reconnectTimer.Start();
+            var args = new CloseEventArgs(reason);
+            foreach (var callback in _closeCallbacks) callback(args);
         }
 
-        private void OnConnError(object sender, ErrorEventArgs e)
+        private void OnConnError(Exception exception)
         {
             TriggerChanError();
-            foreach (var callback in _errorCallbacks) callback(e);
+            var args = new ErrorEventArgs(exception);
+            foreach (var callback in _errorCallbacks) callback(args);
         }
 
         private void TriggerChanError()
@@ -158,7 +212,7 @@ namespace PhoenixChannels
 
         private WebSocketState ConnectionState()
         {
-            return _conn.ReadyState;
+            return _conn?.State ?? WebSocketState.Closed;
         }
 
         public bool IsConnected()
@@ -180,15 +234,21 @@ namespace PhoenixChannels
 
         public void Push(Envelope envelope)
         {
-            Action callback = () => _conn.Send(JObject.FromObject(envelope).ToString(Formatting.None));
+            var push = new JArray(
+                envelope.JoinRef,
+                envelope.Ref,
+                envelope.Topic,
+                envelope.Event,
+                envelope.Payload);
+            void Callback() => _conn.Send(push.ToString());
 
             if (IsConnected())
             {
-                callback();
+                Callback();
             }
             else
             {
-                _sendBuffer.Add(callback);
+                _sendBuffer.Add(Callback);
             }
         }
 
@@ -207,7 +267,7 @@ namespace PhoenixChannels
                 Topic = "phoenix",
                 Event = "heartbeat",
                 Payload = new JObject(),
-                Ref = MakeRef(),
+                Ref = MakeRef()
             };
 
             Push(env);
@@ -215,37 +275,35 @@ namespace PhoenixChannels
 
         private void FlushSendBuffer()
         {
-            if (this.IsConnected() && _sendBuffer.Count > 0)
+            if (IsConnected() && _sendBuffer.Count > 0)
             {
                 foreach (var c in _sendBuffer)
                 {
                     c();
                 }
+
                 _sendBuffer.Clear();
             }
-
         }
 
-        private void OnConnMessage(object sender, MessageEventArgs e)
+        private void OnConnMessage(string message)
         {
-            var env = JsonConvert.DeserializeObject<Envelope>(e.Data);
+            var push = JArray.Parse(message);
+            var env = new Envelope
+            {
+                JoinRef = push.Value<string>(0),
+                Ref = push.Value<string>(1),
+                Topic = push.Value<string>(2),
+                Event = push.Value<string>(3),
+                Payload = push.Value<JObject>(4)
+            };
 
-            foreach(var chan in _channels.Where((c) => c.IsMember(env.Topic)).ToList())
+            foreach (var chan in _channels.Where(c => c.IsMember(env.Topic)).ToList())
             {
                 chan.Trigger(env.Event, env.Payload, env.Ref);
             }
 
             foreach (var callback in _messageCallbacks) callback(env.Topic, env.Event, env.Payload);
         }
-
-        //  onConnMessage(rawMessage){
-        //    let {topic, event, payload} = JSON.parse(rawMessage.data)
-        //    this.channels.filter( chan => chan.isMember(topic) )
-        //                 .forEach( chan => chan.trigger(event, payload) )
-        //    this.stateChangeCallbacks.message.forEach( callback => {
-        //      callback(topic, event, payload)
-        //    })
-        //  }
-        //}
     }
 }

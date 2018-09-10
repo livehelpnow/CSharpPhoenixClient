@@ -18,6 +18,8 @@ namespace PhoenixChannels
         public JObject Payload { get; set; }
         [JsonProperty("ref")]
         public string Ref { get; set; }
+        [JsonProperty("join_ref")]
+        public string JoinRef { get; set; }
     }
 
 }

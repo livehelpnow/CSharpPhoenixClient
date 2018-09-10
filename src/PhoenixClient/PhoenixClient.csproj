@@ -1,0 +1,11 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <AssemblyName>PhoenixChannels</AssemblyName>
+    <RootNamespace>PhoenixChannels</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="11.0.2" />
+    <PackageReference Include="PureWebSockets" Version="2.1.1" />
+  </ItemGroup>
+</Project>

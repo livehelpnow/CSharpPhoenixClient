@@ -47,9 +47,13 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AfterHook.cs" />
+    <Compile Include="ChannelEvents.cs" />
+    <Compile Include="ChannelState.cs" />
     <Compile Include="Envelope.cs" />
     <Compile Include="Push.cs" />
     <Compile Include="Channel.cs" />
+    <Compile Include="RecHook.cs" />
     <Compile Include="Socket.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

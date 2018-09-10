@@ -1,24 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using WebSocketSharp;
 using System.Timers;
-using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace PhoenixChannels
 {
-    public class RecHook
-    {
-        public string Status { get; set; }
-        public Action<JObject> Callback { get; set; }
-    }
-    public class AfterHook
-    {
-        public int Ms { get; set; }
-        public Action Callback { get; set; }
-        public Timer Timer { get; set; }
-    }
     public class Push
     {
         private Channel _channel;
@@ -63,12 +49,14 @@ namespace PhoenixChannels
             StartAfter();
             _sent = true;
 
-            var env = new Envelope()
+
+            var env = new Envelope
             {
                 Topic = _channel.Topic,
                 Event = _event,
                 Payload = _payload,
                 Ref = _ref,
+                JoinRef = _channel.JoinRef
             };
 
             _channel.Socket.Push(env);
@@ -76,12 +64,12 @@ namespace PhoenixChannels
 
         public Push Receive(string status, Action<JObject> callback)
         {
-            if (_receivedResp != null && (string)_receivedResp["status"] == status)
+            if (_receivedResp != null && (string) _receivedResp["status"] == status)
             {
-                callback((JObject)_receivedResp["response"]);
+                callback((JObject) _receivedResp["response"]);
             }
 
-            _recHooks.Add(new RecHook() { Status = status, Callback = callback });
+            _recHooks.Add(new RecHook() {Status = status, Callback = callback});
 
             return this;
         }
@@ -99,10 +87,10 @@ namespace PhoenixChannels
             {
                 timer.Elapsed += (o, e) => callback();
                 timer.AutoReset = false;
-                timer.Start();//.Enabled = true;
+                timer.Start(); //.Enabled = true;
             }
 
-            _afterHook = new AfterHook{ Ms = timeoutMs, Callback = callback, Timer = timer };
+            _afterHook = new AfterHook {Ms = timeoutMs, Callback = callback, Timer = timer};
 
             return this;
         }
@@ -112,9 +100,9 @@ namespace PhoenixChannels
         {
             foreach (var rh in _recHooks)
             {
-                if (rh.Status == (string)payload["status"])
+                if (rh.Status == (string) payload["status"])
                 {
-                    rh.Callback((JObject)payload["response"]);
+                    rh.Callback((JObject) payload["response"]);
                 }
             }
         }
@@ -138,10 +126,10 @@ namespace PhoenixChannels
             if (_afterHook == null) return;
 
             Action callback = () =>
-                {
-                    CancelRefEvent();
-                    _afterHook.Callback();
-                };
+            {
+                CancelRefEvent();
+                _afterHook.Callback();
+            };
             _afterHook.Timer = new Timer(_afterHook.Ms);
             _afterHook.Timer.Elapsed += (o, e) => callback();
         }
