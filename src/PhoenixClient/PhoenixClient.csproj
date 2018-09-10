@@ -3,6 +3,16 @@
     <TargetFramework>netstandard2.0</TargetFramework>
     <AssemblyName>PhoenixChannels</AssemblyName>
     <RootNamespace>PhoenixChannels</RootNamespace>
+    <Version>0.1.0</Version>
+    <Authors>Milan Jaric</Authors>
+    <Company>LiveHelpNow LLC.</Company>
+    <Product>Phoenix Channels</Product>
+    <Description>Phoenixframework Scoket Client library for .NET Framework, .NET Core, .NET Standard</Description>
+    <PackageProjectUrl>https://github.com/livehelpnow/CSharpPhoenixClient</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/livehelpnow/CSharpPhoenixClient</RepositoryUrl>
+    <RepositoryType>Git</RepositoryType>
+    <PackageTags>Websocket, Phoenixframework, Phoenix, Channels</PackageTags>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Newtonsoft.Json" Version="11.0.2" />
